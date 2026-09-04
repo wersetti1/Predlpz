@@ -12,8 +12,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 from aiohttp import web
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8888033833:AAHCof6gsdhNajXrF8Uk2XnnhkZmCfNCS9U"  # Вставьте сюда токен вашего бота от BotFather
-SUPER_ADMIN_ID = 8626592837          # Ваш Telegram ID
+BOT_TOKEN = "8818923747:AAEeGhuInboh8rifD1M_X3g-5LBIOUoym10"  # Вставьте сюда токен вашего бота от BotFather
+SUPER_ADMIN_ID = 8760795279          # Ваш Telegram ID
 
 DB_NAME = "bot_data.db"
 
@@ -245,14 +245,36 @@ async def process_info_text(message: types.Message, state: FSMContext):
 
 @dp.message(~F.text.startswith("/"))
 async def forward_to_admin(message: types.Message):
-    if is_admin(message.from_user.id):
+    # Если пишет админ НЕ через Reply — игнорируем (чтобы не пересылать сообщения админа самому себе)
+    if is_admin(message.from_user.id) and not message.reply_to_message:
         return
 
+    # Если отвечает админ через Reply (нажав «Ответить» на сообщение от бота)
+    if is_admin(message.from_user.id) and message.reply_to_message:
+        reply = message.reply_to_message
+        text_to_search = reply.text or reply.caption or ""
+        
+        # Ищем ID без символа #
+        match = re.search(r"id(\d+)", text_to_search)
+        
+        if match:
+            user_id = int(match.group(1))
+            try:
+                # Отправляем пользователю ровно то, что написал админ ("да", картинка, голосовое и т.д.)
+                await message.copy_to(chat_id=user_id)
+                await message.answer("🚀 Ответ успешно отправлен!")
+            except Exception as e:
+                await message.answer(f"❌ Ошибка отправки пользователю {user_id}:\n{e}")
+        else:
+            await message.answer("⚠️ Не удалось найти ID пользователя. Отвечайте (Reply) именно на сообщение от бота с ID.")
+        return
+
+    # Если пишет обычный пользователь — пересылаем админам
     add_user(message.from_user.id)
     admins = get_all_admins()
     user = message.from_user
     
-    info_header = f"📩 Сообщение от пользователя:\n🆔 #id{user.id}\n-------------------\n"
+    info_header = f"📩 Сообщение от пользователя\nid{user.id}\n-------------------\n"
     
     for admin_id in admins:
         try:
@@ -265,26 +287,6 @@ async def forward_to_admin(message: types.Message):
             logging.error(f"Ошибка отправки админу {admin_id}: {e}")
             
     await message.answer("✅ Ваше сообщение отправлено!")
-
-@dp.message(F.reply_to_message)
-async def reply_to_user(message: types.Message):
-    if not is_admin(message.from_user.id):
-        return
-
-    reply = message.reply_to_message
-    text_to_search = reply.text or reply.caption or ""
-    
-    match = re.search(r"#id(\d+)", text_to_search)
-    
-    if match:
-        user_id = int(match.group(1))
-        try:
-            await message.copy_to(chat_id=user_id)
-            await message.answer("🚀 Ответ успешно отправлен!")
-        except Exception as e:
-            await message.answer(f"❌ Не удалось отправить ответ пользователю {user_id}.\nВозможно, он заблокировал бота.\nОшибка: {e}")
-    else:
-        await message.answer("⚠️ Не удалось найти #id. Отвечайте (Reply) именно на сообщение от бота с ID пользователя.")
 
 # --- ЗАПУСК ---
 async def main():
